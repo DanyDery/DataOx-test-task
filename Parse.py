@@ -1,34 +1,47 @@
 from datetime import date, timedelta
-import pprint
-
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import requests
 from bs4 import BeautifulSoup
 
-from sqlalchemy import Column, String, Integer, MetaData, create_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import Column, String, UnicodeText, Integer, create_engine
+from sqlalchemy.orm import declarative_base, Session
 
-db_string = ''
-db = create_engine(db_string)
-base = declarative_base()
+import secrets
+
+url = f'mysql+pymysql://{secrets.dbuser}:{secrets.dbpass}@{secrets.dbhost}/{secrets.dbname}'
+
+engine = create_engine(url, echo=True)
+engine.connect()
+engine.execute("DROP TABLE IF EXISTS Ad")
+
+Base = declarative_base()
 
 
-class Ad(base):
-    __tablename__ = 'Ad'
+class AdTable(Base):
+    __tablename__ = 'ad_table'
 
+    id = Column("id", Integer, primary_key=True)
     image = Column("image", String(150))
-    title = Column("title", String(60), primary_key=True)
+    title = Column("title", String(200))
     date = Column("date", String(20))
     location = Column("location", String(20))
     bedrooms = Column("bedroom", String(10))
-    description = Column("description", String(400))
-    price = Column("price", String(10))
+    description = Column("description", UnicodeText)
+    price = Column("price", String(20))
 
 
-Session = sessionmaker(db)
-session = Session()
+Base.metadata.create_all(engine)
+
+
+def check_date(the_date: str):
+    if the_date == "Yesterday":
+        yesterday = date.today() - timedelta(days=1)
+        return yesterday.strftime("%d--%m--%Y")
+    elif "ago" in the_date:
+        return date.today().strftime("%d--%m--%Y")
+    else:
+        return the_date.replace('/', '--')
 
 
 @dataclass
@@ -91,44 +104,37 @@ class ParseConnect:
     def preload_info(self, product_cards: list[BeautifulSoup]):
         return [self.create_product(card) for card in product_cards]
 
-    def check_date(self, the_date: str):
-        if the_date == "Yesterday":
-            yesterday = date.today() - timedelta(days=1)
-            return yesterday.strftime("%d--%m--%Y")
-        elif "ago" in the_date:
-            return date.today().strftime("%d--%m--%Y")
-        else:
-            return the_date.replace('/', '--')
-
     @staticmethod
     def create_product(card):
-        image = card.find('div', class_='image')#.find('img').get('data-src')
+        image = card.find('div', class_='image')  # .find('img').get('data-src')
         title = card.find('div', class_='title').text.strip()
         date = card.find('div', class_='location').find('span', class_='date-posted').text.strip()
         location = card.find('div', class_='location').find('span', class_='').text.strip()
-        bedrooms = card.find('span', class_='bedrooms')#.text.strip().split()
+        bedrooms = card.find('span', class_='bedrooms')  # .text.strip().split()
         description = card.find('div', class_='description').text.strip().split('\n')[0]
         price = card.find('div', class_='price').text.strip()
-        return Product(image=image, title=title, date=date, location=location, bedrooms=bedrooms,
+        return Product(image=image, title=title, date=check_date(date), location=location, bedrooms=bedrooms,
                        description=description, price=price)
 
 
-b = ParseConnect()
-lst = b.get_data()
+if __name__ == "__main__":
+    b = ParseConnect()
+    lst = b.get_data()
+    i = iter(b)
 
-i = iter(b)
+    try:
+        while True:
+            next(i)
+            lst.append(b.get_data())
+    except:
+        pass
 
-# try:
-#     while True:
-#         next(i)
-#         lst.append(b.get_data())
-#         print(b.get_data())
-# except:
-#     pass
-
-
-# for prod in lst:
-#     ad = Ad(image=prod.image, title=prod.title, date=prod.date, location=prod.location, bedrooms=prod.bedrooms,
-#             description=prod.description, price=prod.price)
-#     session.add(ad)
-#     session.commit()
+    with Session(engine) as session:
+        for prod in lst:
+            ad = AdTable(image=prod.image, title=prod.title, date=prod.date, location=prod.location,
+                         bedrooms=prod.bedrooms, description=prod.description, price=prod.price)
+            try:
+                session.add(ad)
+                session.commit()
+            except:
+                continue
