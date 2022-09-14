@@ -22,9 +22,9 @@ Base = declarative_base()
 class AdTable(Base):
     __tablename__ = 'ad_table'
 
-    id = Column("id", Integer, Identity(start=1, cycle=True), primary_key=True)
+    id = Column("id", Integer, Identity(start=1, cycle=True), unique=True, autoincrement=True, primary_key=True)
     image = Column("image", String(150))
-    title = Column("title", String(200))
+    title = Column("title", String(200), primary_key=False)
     date = Column("date", String(20))
     location = Column("location", String(20))
     bedrooms = Column("bedroom", String(10))
@@ -120,21 +120,26 @@ class ParseConnect:
 if __name__ == "__main__":
     b = ParseConnect()
     lst = b.get_data()
-    i = iter(b)
-
-    try:
-        while True:
-            next(i)
-            lst.append(b.get_data())
-    except:
-        pass
 
     with Session(engine) as session:
         for prod in lst:
             ad = AdTable(image=prod.image, title=prod.title, date=check_date(prod.date), location=prod.location,
                          bedrooms=prod.bedrooms, description=prod.description, price=prod.price)
-            try:
-                session.add(ad)
-                session.commit()
-            except:
-                continue
+
+    i = iter(b)
+
+    try:
+        while True:
+            next(i)
+            lst = (b.get_data())
+            with Session(engine) as session:
+                for prod in lst:
+                    ad = AdTable(image=prod.image, title=prod.title, date=check_date(prod.date), location=prod.location,
+                                 bedrooms=prod.bedrooms, description=prod.description, price=prod.price)
+                    try:
+                        session.add(ad)
+                        session.commit()
+                    except:
+                        continue
+    except:
+        pass
