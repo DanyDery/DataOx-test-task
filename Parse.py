@@ -4,10 +4,11 @@ from dataclasses import dataclass
 import requests
 from bs4 import BeautifulSoup
 
-from sqlalchemy import Column, String, UnicodeText, Integer, create_engine
+from sqlalchemy import Column, String, UnicodeText, Integer, Identity, create_engine
 from sqlalchemy.orm import declarative_base, Session
 
 import secrets
+import json
 
 url = f'mysql+pymysql://{secrets.dbuser}:{secrets.dbpass}@{secrets.dbhost}/{secrets.dbname}'
 
@@ -21,7 +22,7 @@ Base = declarative_base()
 class AdTable(Base):
     __tablename__ = 'ad_table'
 
-    id = Column("id", Integer, primary_key=True)
+    id = Column("id", Integer, Identity(start=1, cycle=True), primary_key=True)
     image = Column("image", String(150))
     title = Column("title", String(200))
     date = Column("date", String(20))
@@ -38,10 +39,9 @@ def check_date(the_date: str):
     if the_date == "Yesterday":
         yesterday = date.today() - timedelta(days=1)
         return yesterday.strftime("%d--%m--%Y")
-    elif "ago" in the_date:
+    elif "<" in the_date:
         return date.today().strftime("%d--%m--%Y")
-    else:
-        return the_date.replace('/', '--')
+    return the_date.replace('/', '--')
 
 
 @dataclass
@@ -108,12 +108,12 @@ class ParseConnect:
     def create_product(card):
         image = card.find('div', class_='image')  # .find('img').get('data-src')
         title = card.find('div', class_='title').text.strip()
-        date = card.find('div', class_='location').find('span', class_='date-posted').text.strip()
+        date = check_date(card.find('div', class_='location').find('span', class_='date-posted').text.strip())
         location = card.find('div', class_='location').find('span', class_='').text.strip()
         bedrooms = card.find('span', class_='bedrooms')  # .text.strip().split()
         description = card.find('div', class_='description').text.strip().split('\n')[0]
         price = card.find('div', class_='price').text.strip()
-        return Product(image=image, title=title, date=check_date(date), location=location, bedrooms=bedrooms,
+        return Product(image=image, title=title, date=date, location=location, bedrooms=bedrooms,
                        description=description, price=price)
 
 
@@ -131,7 +131,7 @@ if __name__ == "__main__":
 
     with Session(engine) as session:
         for prod in lst:
-            ad = AdTable(image=prod.image, title=prod.title, date=prod.date, location=prod.location,
+            ad = AdTable(image=prod.image, title=prod.title, date=check_date(prod.date), location=prod.location,
                          bedrooms=prod.bedrooms, description=prod.description, price=prod.price)
             try:
                 session.add(ad)
